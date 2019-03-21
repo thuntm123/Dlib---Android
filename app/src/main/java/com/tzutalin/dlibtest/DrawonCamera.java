@@ -13,6 +13,7 @@ import android.graphics.Point;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.hardware.Camera;
+import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -44,9 +45,9 @@ import java.util.List;
 public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
 
     private static final String TAG = "DrawonCamera";
-    SurfaceView cameraView, transparentView;
+    SurfaceView cameraView, transparentView, rectView;
 
-    SurfaceHolder holder, holderTransparent;
+    SurfaceHolder holder, holderTransparent, holderRect;
 
     private RenderScript rs;
     private ScriptIntrinsicYuvToRGB yuvToRgbIntrinsic;
@@ -57,14 +58,16 @@ public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
     private Paint mFaceLandmardkPaint;
     private Handler mInferenceHandler;
     private HandlerThread inferenceThread;
-
     private Canvas canvas = null;
+    private int count = 0, k = 0, cnt = 0;
 
     int deviceHeight, deviceWidth;
     Bitmap imageBitmap;
     private FaceDet mFaceDet;
     private Context mContext;
     private float RectLeft, RectTop, RectRight, RectBottom;
+
+    MediaPlayer mp;
 
     public static int getScreenWidth() {
         return Resources.getSystem().getDisplayMetrics().widthPixels;
@@ -94,6 +97,7 @@ public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
         //holder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
 
         cameraView.setSecure(true);
+        mp = (MediaPlayer) MediaPlayer.create(this, R.raw.warning);
 
         transparentView = (SurfaceView) findViewById(R.id.TransparentView);
 
@@ -104,6 +108,12 @@ public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
         holderTransparent.setFormat(PixelFormat.TRANSLUCENT);
 
         transparentView.setZOrderMediaOverlay(true);
+
+        rectView = (SurfaceView) findViewById(R.id.RectView);
+
+        holderRect = rectView.getHolder();
+        holderRect.addCallback(this);
+        holderRect.setFormat(PixelFormat.TRANSPARENT);
 
         //getting the device heigth and width
 
@@ -126,7 +136,7 @@ public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
 
     private void Draw() {
 
-        Canvas canvas = holderTransparent.lockCanvas(null);
+        Canvas canvas1 = holderRect.lockCanvas(null);
 
         Paint  paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
@@ -136,19 +146,19 @@ public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
 
         paint.setStrokeWidth(3);
 
-        /*RectLeft = 550;
+        RectLeft = 380;
 
-        RectTop = 20 ;
+        RectTop = 10 ;
 
-        RectRight = deviceWidth - 550;
+        RectRight = RectLeft + 1000;
 
-        RectBottom = deviceHeight - 150;
+        RectBottom = RectTop + 1000;
 
         Rect rec=new Rect((int) RectLeft,(int)RectTop,(int)RectRight,(int)RectBottom);
 
-        canvas.drawRect(rec,paint);*/
+        canvas1.drawRect(rec,paint);
 
-        holderTransparent.unlockCanvasAndPost(canvas);
+        holderRect.unlockCanvasAndPost(canvas1);
 
     }
     @Override
@@ -191,7 +201,8 @@ public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
                     int[] RGBBytes  = convertYUV420_NV21toRGB8888(data, width, height);
                     imageBitmap = Bitmap.createBitmap(RGBBytes, width, height, Bitmap.Config.ARGB_8888);
                     imageBitmap = Bitmap.createScaledBitmap(imageBitmap,width/4,height/4,false);
-                    //imageBitmap = Bitmap.createBitmap(imageBitmap,100,10, 224, 224);
+                    final int widthX = imageBitmap.getWidth()/4;
+                    imageBitmap = Bitmap.createBitmap(imageBitmap,widthX,0, 250, 250);
 
                    // List<VisionDetRet> results = mFaceDet.detect(imageBitmap);
                    // Log.i(TAG, "on cameraframe " + width + "  " + height + " result " + results.size());
@@ -200,10 +211,6 @@ public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
                     //  mTransparentTitleView.setText("Time cost: " + String.valueOf((endTime - startTime) / 1000f) + " sec");
                     // Draw on bitmap
 
-                    mInferenceHandler.post(
-                            new Runnable() {
-                                @Override
-                                public void run() {
                                     if (!new File(Constants.getFaceShapeModelPath()).exists()) {
                                         //    mTransparentTitleView.setText("Copying landmark model to " + Constants.getFaceShapeModelPath());
                                         FileUtils.copyFileFromRawToOthers(mContext, R.raw.shape_predictor_68_face_landmarks, Constants.getFaceShapeModelPath());
@@ -218,42 +225,68 @@ public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
                                             float resizeRatio = 4.0f;
                                             float w = imageBitmap.getWidth();
                                             float h = imageBitmap.getHeight();
-                                            int offsetX = 65;
-                                            int offsetY = 30;
+                                            int offsetX = 30;
+                                            int offsetY = 7;
                                             Rect bounds = new Rect();
-                                            bounds.left = (int) ((w - ret.getLeft()) * resizeRatio - offsetX);
-                                            bounds.top = (int) (ret.getTop() * resizeRatio - offsetY);
-                                            bounds.right = (int) ((w - ret.getRight()) * resizeRatio - offsetX);
-                                            bounds.bottom = (int) (ret.getBottom() * resizeRatio - offsetY);
+                                            bounds.left = (int) ((w - ret.getLeft() + widthX- offsetX) * resizeRatio );
+                                            bounds.top = (int) ((ret.getTop() - offsetY) * resizeRatio);
+                                            bounds.right = (int) ((w - ret.getRight() + widthX - offsetX) * resizeRatio);
+                                            bounds.bottom = (int) ((ret.getBottom() - offsetY) * resizeRatio);
                                             canvas = holderTransparent.lockCanvas(null);
                                             canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
                                             canvas.drawRect(bounds, mFaceLandmardkPaint);
 
                                             // Draw landmark
                                             ArrayList<Point> landmarks = ret.getFaceLandmarks();
-                                            List<Point> eyePoints = landmarks.subList(36, 42);
-                                            canvas.drawLine((w-eyePoints.get(0).x)*resizeRatio - offsetX, (eyePoints.get(0).y)*resizeRatio - offsetY, (w-eyePoints.get(1).x)*resizeRatio - offsetX, (eyePoints.get(1).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints.get(1).x)*resizeRatio - offsetX, (eyePoints.get(1).y)*resizeRatio - offsetY, (w-eyePoints.get(2).x)*resizeRatio - offsetX, (eyePoints.get(2).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints.get(2).x)*resizeRatio - offsetX, (eyePoints.get(2).y)*resizeRatio - offsetY, (w-eyePoints.get(3).x)*resizeRatio - offsetX, (eyePoints.get(3).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints.get(3).x)*resizeRatio - offsetX, (eyePoints.get(3).y)*resizeRatio - offsetY, (w-eyePoints.get(4).x)*resizeRatio - offsetX, (eyePoints.get(4).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints.get(4).x)*resizeRatio - offsetX, (eyePoints.get(4).y)*resizeRatio - offsetY, (w-eyePoints.get(5).x)*resizeRatio - offsetX, (eyePoints.get(5).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints.get(5).x)*resizeRatio - offsetX, (eyePoints.get(5).y)*resizeRatio - offsetY, (w-eyePoints.get(0).x)*resizeRatio - offsetX, (eyePoints.get(0).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
+                                            List<Point> eyePointsL = landmarks.subList(36, 42);
+                                            canvas.drawLine((w-eyePointsL.get(0).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(0).y - offsetY)*resizeRatio, (w-eyePointsL.get(1).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(1).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsL.get(1).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(1).y - offsetY)*resizeRatio, (w-eyePointsL.get(2).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(2).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsL.get(2).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(2).y - offsetY)*resizeRatio, (w-eyePointsL.get(3).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(3).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsL.get(3).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(3).y - offsetY)*resizeRatio, (w-eyePointsL.get(4).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(4).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsL.get(4).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(4).y - offsetY)*resizeRatio, (w-eyePointsL.get(5).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(5).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsL.get(5).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(5).y - offsetY)*resizeRatio, (w-eyePointsL.get(0).x + widthX - offsetX)*resizeRatio, (eyePointsL.get(0).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
 
-                                            List<Point> eyePoints1 = landmarks.subList(42, 48);
-                                            canvas.drawLine((w-eyePoints1.get(0).x)*resizeRatio - offsetX, (eyePoints1.get(0).y)*resizeRatio - offsetY, (w-eyePoints1.get(1).x)*resizeRatio - offsetX, (eyePoints1.get(1).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints1.get(1).x)*resizeRatio - offsetX, (eyePoints1.get(1).y)*resizeRatio - offsetY, (w-eyePoints1.get(2).x)*resizeRatio - offsetX, (eyePoints1.get(2).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints1.get(2).x)*resizeRatio - offsetX, (eyePoints1.get(2).y)*resizeRatio - offsetY, (w-eyePoints1.get(3).x)*resizeRatio - offsetX, (eyePoints1.get(3).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints1.get(3).x)*resizeRatio - offsetX, (eyePoints1.get(3).y)*resizeRatio - offsetY, (w-eyePoints1.get(4).x)*resizeRatio - offsetX, (eyePoints1.get(4).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints1.get(4).x)*resizeRatio - offsetX, (eyePoints1.get(4).y)*resizeRatio - offsetY, (w-eyePoints1.get(5).x)*resizeRatio - offsetX, (eyePoints1.get(5).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
-                                            canvas.drawLine((w-eyePoints1.get(5).x)*resizeRatio - offsetX, (eyePoints1.get(5).y)*resizeRatio - offsetY, (w-eyePoints1.get(0).x)*resizeRatio - offsetX, (eyePoints1.get(0).y)*resizeRatio - offsetY, mFaceLandmardkPaint);
+                                            List<Point> eyePointsR = landmarks.subList(42, 48);
+                                            canvas.drawLine((w-eyePointsR.get(0).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(0).y - offsetY)*resizeRatio, (w-eyePointsR.get(1).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(1).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsR.get(1).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(1).y - offsetY)*resizeRatio, (w-eyePointsR.get(2).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(2).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsR.get(2).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(2).y - offsetY)*resizeRatio, (w-eyePointsR.get(3).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(3).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsR.get(3).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(3).y - offsetY)*resizeRatio, (w-eyePointsR.get(4).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(4).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsR.get(4).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(4).y - offsetY)*resizeRatio, (w-eyePointsR.get(5).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(5).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
+                                            canvas.drawLine((w-eyePointsR.get(5).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(5).y - offsetY)*resizeRatio, (w-eyePointsR.get(0).x + widthX - offsetX)*resizeRatio, (eyePointsR.get(0).y - offsetY)*resizeRatio, mFaceLandmardkPaint);
                                             holderTransparent.unlockCanvasAndPost(canvas);
                                             Log.i(TAG,"Test======");
+
+                                            double EAR = (compute_EAR(eyePointsL) + compute_EAR(eyePointsR))/2;
+                                            Log.i(TAG,"EAR ===== ");
+                                            if(EAR < 0.2) {
+                                                count += 1;
+                                                if (mp != null) {
+                                                    // mp.reset();
+                                                    mp.release();
+                                                }
+                                                if (count >= 1) {
+                                                    Log.i(TAG, "MediaPlayer======");
+                                                    mp.start();
+                                                }
+                                            }
+                                            else
+                                                count = 0;
+
+                                            mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                                                @Override
+                                                public void onCompletion(MediaPlayer mediaPlayer) {
+                                                    mp.stop();
+                                                    if (mp != null) {
+                                                        mp.release();
+                                                    }
+
+                                                }
+                                            });
+
 
                                         }
                                     }
                                     holderTransparent.setKeepScreenOn(true);
-                                }
-                            });
 
                     Trace.endSection();
                 }
@@ -279,7 +312,7 @@ public class DrawonCamera extends Activity implements SurfaceHolder.Callback {
         double b = Math.sqrt(bX * bX + bY * bY);
         double c = Math.sqrt(cX * cX + cY * cY);
 
-        double ear = (a + b) / 2 * c;
+        double ear = (a + b) / (2 * c);
         return ear;
     }
 
